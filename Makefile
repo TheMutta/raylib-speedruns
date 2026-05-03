@@ -1,7 +1,7 @@
-.PHONY: all clean nasm_target c_target
+.PHONY: all clean nasm_target c_target cpp_target
 
 # phony targets
-all: nasm_target c_target
+all: nasm_target c_target cpp_target
 clean:
 	rm -rf */*.o */*.elf
 
@@ -22,8 +22,17 @@ nasm/main.asm.o: nasm/main.asm
 c_target: c/c.elf
 
 c/c.elf: c/main.c.o
+	gcc c/main.c.o -o c/c.elf -lraylib
 
 c/main.c.o: c/main.c
-	gcc c/main.c -o c/c.elf -lraylib
+	gcc -c c/main.c -o c/main.c.o -lraylib
 
+# cpp targets
+cpp_target: cpp/cpp.elf
+
+cpp/cpp.elf: cpp/main.cpp.o
+	gcc cpp/main.cpp.o -o cpp/cpp.elf -lraylib
+
+cpp/main.cpp.o: cpp/main.cpp
+	g++ -c cpp/main.cpp -o cpp/main.cpp.o -lraylib
 
