@@ -25,13 +25,18 @@ struc camera3d
 endstruc
 
 struc model
+	; Matrix
 	.transform: resd 16
+
 	.mesh_count: resd 1
+	.material_count: resd 1
+
 	.meshes: resq 1
 	.materials: resq 1
-	.mesh_material: resq 1
 
+	.mesh_material: resq 1
 	.bone_count: resd 1
+
 	.bone_info: resq 1
 	.bind_pose: resq 1
 endstruc
@@ -39,6 +44,9 @@ endstruc
 section .rodata
 
 ;; strings
+
+; debug string
+print_value_reg db "dbg: reg 0x%x", 10, 0
 
 ; error messages
 lua_create_error db "err: can't create luajit state", 10, 0
@@ -57,6 +65,7 @@ lua_script db "res/game.lua", 0
 
 ; lua api signatures
 lua_oninit_signature db "OnInit", 0
+lua_onupdate_signature db "OnUpdate", 0
 lua_engine_signature db "Engine", 0
 lua_load_model_signature db "LoadModel", 0
 
@@ -123,10 +132,11 @@ iend
 angle: dd -90.0
 
 section .bss
-model_data: resb model_size
-
 ; lua state ptr
 lua_state: resq 1
+
+model_data: resb model_size
+
 
 section .text
 
@@ -230,6 +240,7 @@ main:
 	push rdi
 	call lua_pcall
 	pop rdi
+
 	test rax, rax
 	jz .init_lua_api
 	
@@ -298,8 +309,21 @@ main:
 	call lua_pcall
 	pop rdi
 
+	push rax
+
+	pop rax
+
 	; rdi with lua state has been fully popped, restore stack alignment
 	add rsp, 8
+
+	test rax, rax
+	jz .post_init
+
+	;...
+	mov rdi, 255
+	call exit
+
+	; path ends here
 
 .post_init:
 	; Optional, we wanna show off
@@ -312,7 +336,52 @@ main:
 	cmp rax, 1
 	je .end
 	xor rax, rax
-	
+
+.loop_lua_onupdate:
+	sub rsp, 8
+
+	mov rdi, [rel lua_state]
+
+	; get the on update function
+	mov rsi, LUA_GLOBALSINDEX
+	lea rdx, [rel lua_onupdate_signature]
+	push rdi
+	call lua_getfield
+	pop rdi
+
+	; check if oninit is a function
+	mov rsi, -1
+	push rdi
+	call lua_type
+	pop rdi
+
+	cmp rax, LUA_TFUNCTION
+	jne .end
+
+
+	; Runs OnUpdate
+	xor rsi, rsi
+	xor rdx, rdx
+	xor rcx, rcx
+	push rdi
+	call lua_pcall
+	pop rdi
+
+	push rax
+
+	pop rax
+	add rsp, 8
+
+	test rax, rax
+	jz .loop_rendering
+
+	; ...
+
+	mov rdi, 255
+	call exit
+	; path ends
+
+.loop_rendering:
 	; Start of the loop
 	lea rdi, [rel camera]
 	mov rsi, 2 ; CAMERA_ORBITAL
@@ -400,15 +469,19 @@ lua_load_model:
 	mov rsi, 1
 	xor rdx, rdx
 	push rdi
+	sub rsp, 8
 	call luaL_checklstring
-	pop rdi
 
 	; load model
+
 	lea rdi, [rel model_data]; sysv: first arg is now the place where to put the struct
 	mov rsi, rax
 	call LoadModel
 
-	mov rax, 0
+	add rsp, 8
+	pop rdi
+
+	xor rax, rax
 
 	; epilogue
 	leave

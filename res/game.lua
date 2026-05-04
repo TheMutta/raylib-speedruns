@@ -10,7 +10,7 @@ end
 
 
 function OnUpdate()
-
+	print("Engine update")
 end
 
 function OnPhysicsUpdate()
