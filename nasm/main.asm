@@ -1,5 +1,8 @@
 [BITS 64]
 
+%define LUA_GLOBALSINDEX -10002
+%define LUA_TFUNCTION 6
+
 struc color
 	.r: resb 1
 	.g: resb 1
@@ -34,11 +37,28 @@ struc model
 endstruc
 
 section .rodata
+
+;; strings
+
+; error messages
+lua_create_error db "err: can't create luajit state", 10, 0
+lua_loadfile_error db "err: can't load game.lua", 10, 0
+
+; hello string
 hello_label db "Hello, world", 10, 0
+
+; raylib strings
 window_title db "Test game", 0
 text_label db "Welcome from ASMRaylib!", 0
 
+; paths
 model_path db "res/test.glb", 0
+lua_script db "res/game.lua", 0
+
+; lua api signatures
+lua_oninit_signature db "OnInit", 0
+lua_engine_signature db "Engine", 0
+lua_load_model_signature db "LoadModel", 0
 
 raywhite:
 	istruc color
@@ -60,6 +80,7 @@ red:
 grid_spacing dd 1.0
 
 section .data
+
 camera:
 	istruc camera3d
 		at camera3d.position, istruc vector3
@@ -104,10 +125,16 @@ angle: dd -90.0
 section .bss
 model_data: resb model_size
 
+; lua state ptr
+lua_state: resq 1
+
 section .text
+
+; libc
 extern exit
 extern printf
 
+; raylib
 extern InitWindow
 extern SetTargetFPS
 extern WindowShouldClose
@@ -124,6 +151,19 @@ extern DrawGrid
 extern LoadModel
 extern DrawModelEx
 
+; luajit
+extern luaL_newstate
+extern luaL_openlibs
+extern luaL_checklstring
+extern luaL_loadfile
+extern lua_pcall
+extern lua_createtable
+extern lua_pushcclosure
+extern lua_setfield
+extern lua_getfield
+extern lua_isfunction
+extern lua_type
+
 global main
 main:
 	sub rsp, 8
@@ -133,17 +173,135 @@ main:
 	xor rax, rax
 	call printf
 
+.init_window:
 	; Init window
 	mov rdi, 800
 	mov rsi, 450
 	lea rdx, [rel window_title]
 	call InitWindow
 
-	; Load model
-	lea rdi, [rel model_data]; sysv: first arg is now the place where to put the struct
-	lea rsi, [rel model_path]
-	call LoadModel
+.init_lua:
+	call luaL_newstate
+	test rax, rax
+	jnz .init_lua_2
 
+	lea rdi, [rel lua_create_error]
+	xor rax, rax
+	call printf
+
+	mov rdi, 255
+	call exit
+	; end of path
+
+.init_lua_2:
+	; align stack for rdi pushes before calls
+	sub rsp, 8
+
+	; save lua ptr from rax
+	mov [rel lua_state], rax
+
+	; load in rdi
+	mov rdi, rax
+	; load lua libs
+	push rdi
+	call luaL_openlibs 
+	pop rdi
+
+	; load script
+	lea rsi, [rel lua_script]
+	push rdi
+	call luaL_loadfile
+	pop rdi
+	test rax, rax
+	jz .init_lua_pcall
+
+	lea rdi, [rel lua_loadfile_error]
+	xor rax, rax
+	call printf
+
+	mov rdi, 255
+	call exit
+	; end of path
+
+.init_lua_pcall:
+	xor rsi, rsi
+	xor rdx, rdx
+	xor rcx, rcx
+	push rdi
+	call lua_pcall
+	pop rdi
+	test rax, rax
+	jz .init_lua_api
+	
+	; ...
+
+	mov rdi, 255
+	call exit
+	; end of path
+
+.init_lua_api:
+	; create table api
+	mov rsi, 1 ; reserved function spaces
+	mov rdx, 0
+	push rdi
+	call lua_createtable
+	pop rdi
+
+	; push functions
+	lea rsi, [rel lua_load_model]
+	xor rdx, rdx
+	push rdi
+	call lua_pushcclosure
+	pop rdi
+
+	mov rsi, -2 ; [1] table [2] load_model
+	lea rdx, [rel lua_load_model_signature]
+	push rdi
+	call lua_setfield
+	pop rdi
+
+	mov rsi, LUA_GLOBALSINDEX
+	lea rdx, [rel lua_engine_signature]
+	push rdi
+	call lua_setfield
+	pop rdi
+
+	; get the on init function
+	mov rsi, LUA_GLOBALSINDEX
+	lea rdx, [rel lua_oninit_signature]
+	push rdi
+	call lua_getfield
+	pop rdi
+
+	; check if oninit is a function
+	mov rsi, -1
+	push rdi
+	call lua_type
+	pop rdi
+
+	cmp rax, LUA_TFUNCTION
+	je .lua_run_oninit
+
+	; ...
+
+	mov rdi, 255
+	call exit
+
+	; end of path
+
+.lua_run_oninit:
+	; Runs OnInit
+	xor rsi, rsi
+	xor rdx, rdx
+	xor rcx, rcx
+	push rdi
+	call lua_pcall
+	pop rdi
+
+	; rdi with lua state has been fully popped, restore stack alignment
+	add rsp, 8
+
+.post_init:
 	; Optional, we wanna show off
 	mov rdi, 60
 	call SetTargetFPS
@@ -225,5 +383,33 @@ main:
 .end:
 	call CloseWindow
 
+	; todo cleanup
+
 	mov rdi, 0
 	call exit
+
+; engine api
+lua_load_model:
+	; prologue
+	push rbp
+	mov rbp, rsp
+
+	; stack is 16 bit aligned, can call
+	
+	; get the model path
+	mov rsi, 1
+	xor rdx, rdx
+	push rdi
+	call luaL_checklstring
+	pop rdi
+
+	; load model
+	lea rdi, [rel model_data]; sysv: first arg is now the place where to put the struct
+	mov rsi, rax
+	call LoadModel
+
+	mov rax, 0
+
+	; epilogue
+	leave
+	ret

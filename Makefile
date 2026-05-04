@@ -16,7 +16,7 @@ run_nasm: nasm_target
 nasm_target: nasm/nasm.elf
 
 nasm/nasm.elf: nasm/main.asm.o
-	gcc nasm/main.asm.o -o nasm/nasm.elf -no-pie -lraylib
+	gcc nasm/main.asm.o -o nasm/nasm.elf -no-pie -lraylib -lluajit-5.1 -lm -ldl
 
 nasm/main.asm.o: nasm/main.asm
 	nasm -felf64 nasm/main.asm -o nasm/main.asm.o
@@ -28,10 +28,10 @@ run_c: c_target
 c_target: c/c.elf
 
 c/c.elf: c/main.c.o
-	gcc c/main.c.o -o c/c.elf -lraylib
+	gcc c/main.c.o -o c/c.elf -lraylib -lluajit-5.1 -lm -ldl
 
 c/main.c.o: c/main.c
-	gcc -c c/main.c -o c/main.c.o -lraylib
+	gcc -c c/main.c -o c/main.c.o -lraylib -lluajit-5.1 -lm -ldl
 
 # cpp targets
 run_cpp: cpp_target
@@ -40,8 +40,8 @@ run_cpp: cpp_target
 cpp_target: cpp/cpp.elf
 
 cpp/cpp.elf: cpp/main.cpp.o
-	gcc cpp/main.cpp.o -o cpp/cpp.elf -lraylib
+	gcc cpp/main.cpp.o -o cpp/cpp.elf -lraylib -lluajit-5.1 -lm -ldl
 
 cpp/main.cpp.o: cpp/main.cpp
-	g++ -c cpp/main.cpp -o cpp/main.cpp.o -lraylib
+	g++ -c cpp/main.cpp -o cpp/main.cpp.o -lraylib -lluajit-5.1 -lm -ldl
 
