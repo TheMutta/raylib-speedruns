@@ -2,3 +2,4 @@
 *.elf
 *.glb
 *.png
+/build
